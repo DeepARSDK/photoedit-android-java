@@ -1,59 +1,49 @@
 package ai.deepar.photo_edit_example;
 
+import ai.deepar.ar.ARErrorType;
 import ai.deepar.ar.AREventListener;
 import ai.deepar.ar.DeepAR;
+import ai.deepar.ar.DeepARPixelFormat;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
-import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Matrix;
-import android.graphics.RectF;
-import android.graphics.drawable.BitmapDrawable;
-import android.hardware.Camera;
+import android.media.Image;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.Message;
-import android.os.Process;
-import android.os.SystemClock;
-import android.provider.MediaStore;
 import android.text.format.DateFormat;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.RadioButton;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.lang.ref.WeakReference;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.nio.Buffer;
 import java.util.ArrayList;
 import java.util.Date;
 
 import static ai.deepar.photo_edit_example.LoadImageHandlerThread.LOAD_DEFAULT_IMAGE_TASK;
 import static ai.deepar.photo_edit_example.LoadImageHandlerThread.LOAD_IMAGE_FROM_GALLERY_TASK;
+import static ai.deepar.photo_edit_example.LoadImageHandlerThread.REFRESH_IMAGE_TASK;
 
-public class MainActivity extends AppCompatActivity implements SurfaceHolder.Callback, AREventListener {
+public class MainActivity extends AppCompatActivity implements AREventListener  {
 
     private DeepAR deepAR;
 
-    private int currentMask=0;
+    private int currentMask=1;
     private int currentEffect=0;
     private int currentFilter=0;
 
@@ -66,6 +56,10 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     ArrayList<String> filters;
 
     private int activeFilterType = 0;
+
+    private ImageView offscreenView;
+    private int width = 720;
+    private int height = 1280;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -104,9 +98,10 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
     private void initialize() {
         setContentView(R.layout.activity_main);
+        initalizeViews();
         initializeDeepAR();
         initializeFilters();
-        initalizeViews();
+
     }
 
     private void initializeFilters() {
@@ -167,20 +162,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         final RadioButton radioEffects = findViewById(R.id.effects);
         final RadioButton radioFilters = findViewById(R.id.filters);
 
-        SurfaceView arView = findViewById(R.id.surface);
-
-        arView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                deepAR.onClick();
-            }
-        });
-
-        arView.getHolder().addCallback(this);
-
-        // Surface might already be initialized, so we force the call to onSurfaceChanged
-        arView.setVisibility(View.GONE);
-        arView.setVisibility(View.VISIBLE);
+        offscreenView = (ImageView)findViewById(R.id.offscreenView);
 
         ImageButton screenshotBtn = findViewById(R.id.recordButton);
         screenshotBtn.setOnClickListener(new View.OnClickListener() {
@@ -247,7 +229,8 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         deepAR = new DeepAR(this);
         deepAR.setLicenseKey("your_license_key_goes_here");
         deepAR.initialize(this, this);
-
+        deepAR.changeLiveMode(false);
+        deepAR.setOffscreenRendering(width, height);
     }
 
     private String getFilterPath(String filterName) {
@@ -268,7 +251,9 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
             currentFilter = (currentFilter + 1) % filters.size();
             deepAR.switchEffect("filter", getFilterPath(filters.get(currentFilter)));
         }
+        refreshImage();
     }
+
 
     private void gotoPrevious() {
         if (activeFilterType == 0) {
@@ -281,6 +266,13 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
             currentFilter = (currentFilter - 1) % filters.size();
             deepAR.switchEffect("filter", getFilterPath(filters.get(currentFilter)));
         }
+        refreshImage();
+    }
+
+    void refreshImage() {
+        Message msg = Message.obtain(handlerThread.getHandler());
+        msg.what = REFRESH_IMAGE_TASK;
+        msg.sendToTarget();
     }
 
     @Override
@@ -313,23 +305,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
         } else {
             Toast.makeText(this, "You haven't picked Image",Toast.LENGTH_LONG).show();
-        }
-    }
-
-    @Override
-    public void surfaceCreated(SurfaceHolder holder) {
-        Log.d("MainActivity", "Surface created");
-    }
-
-    @Override
-    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        deepAR.setRenderSurface(holder.getSurface(), width, height);
-    }
-
-    @Override
-    public void surfaceDestroyed(SurfaceHolder holder) {
-        if (deepAR != null) {
-            deepAR.setRenderSurface(null, 0, 0);
         }
     }
 
@@ -378,15 +353,17 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
     @Override
     public void initialized() {
-
         if (handlerThread != null && deepAR != null) {
             handlerThread.setImageReceiver(deepAR);
-
             // Load default image
             Message msg = Message.obtain(handlerThread.getHandler());
             msg.what = LOAD_DEFAULT_IMAGE_TASK;
             msg.sendToTarget();
         }
+        //jumpstart masks
+        deepAR.switchEffect("mask", getFilterPath(masks.get(1)));
+        refreshImage();
+
     }
 
     @Override
@@ -400,7 +377,21 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     }
 
     @Override
-    public void error(String s) {
+    public void frameAvailable(Image frame) {
+        if (frame != null) {
+            final Image.Plane[] planes = frame.getPlanes();
+            final Buffer buffer = planes[0].getBuffer().rewind();
+            int pixelStride = planes[0].getPixelStride();
+            int rowStride = planes[0].getRowStride();
+            int rowPadding = rowStride - pixelStride * width;
+            Bitmap bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
+            bitmap.copyPixelsFromBuffer(buffer);
+            offscreenView.setImageBitmap(bitmap);
+        }
+    }
+
+    @Override
+    public void error(ARErrorType arErrorType, String s) {
 
     }
 

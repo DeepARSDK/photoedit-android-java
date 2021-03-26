@@ -30,6 +30,7 @@ public class LoadImageHandlerThread extends HandlerThread {
 
     public static final int LOAD_IMAGE_FROM_GALLERY_TASK = 1;
     public static final int LOAD_DEFAULT_IMAGE_TASK = 2;
+    public static final int REFRESH_IMAGE_TASK = 3;
 
     private Handler handler;
     private DeepAR imageReceiver;
@@ -38,6 +39,9 @@ public class LoadImageHandlerThread extends HandlerThread {
     ByteBuffer nv21bb;
     int width;
     int height;
+
+    Bitmap lastImage;
+    boolean lastRotate;
 
     public LoadImageHandlerThread(ContextWrapper context) {
         super("ExampleHandlerThread", Process.THREAD_PRIORITY_BACKGROUND);
@@ -68,6 +72,10 @@ public class LoadImageHandlerThread extends HandlerThread {
                     case LOAD_DEFAULT_IMAGE_TASK:
                         Log.d(TAG, "Load Image from Assets Task, obj: " + msg.obj);
                         loadDefaultBitmap();
+
+                    case REFRESH_IMAGE_TASK:
+                        Log.d(TAG, "Refresh Image Task, obj: " + msg.obj);
+                        refreshBitmap();
                 }
             }
         };
@@ -76,8 +84,15 @@ public class LoadImageHandlerThread extends HandlerThread {
     void loadDefaultBitmap() {
         Bitmap defaultImage = ((BitmapDrawable) mContext.get().getResources()
                 .getDrawable(R.drawable.default_face)).getBitmap();
+        lastImage = defaultImage;
+        lastRotate = true;
+        uploadBitmapToDeepAR(defaultImage, true);
+    }
 
-        uploadBitmapToDeepAR(defaultImage);
+    void refreshBitmap() {
+        if (lastImage != null) {
+            uploadBitmapToDeepAR(lastImage, lastRotate);
+        }
     }
 
     void loadBitmapFromGallery(Uri imageUri) {
@@ -85,20 +100,34 @@ public class LoadImageHandlerThread extends HandlerThread {
         final Bitmap selectedImage;
         try {
             selectedImage = BitmapFactory.decodeStream(mContext.get().getContentResolver().openInputStream(imageUri));
-            uploadBitmapToDeepAR(selectedImage);
+            lastImage = selectedImage;
+            if (lastImage != null) {
+                lastRotate = false;
+                uploadBitmapToDeepAR(selectedImage, false);
+            }
 
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
     }
 
-    private void uploadBitmapToDeepAR(Bitmap selectedImage) {
+    private void uploadBitmapToDeepAR(Bitmap selectedImage, boolean rotate) {
         // DeepAR supports following resolutions:
         // w1280xh720, w640xh480 and w640xh360
         // If we want to show a portrait image we need to first crop the 1280x720 rectangle and
         // then rotate it and feed as such to DeepAR.
-        final Bitmap resizedBitmap = scaleCenterCrop(selectedImage, 1280, 720);
-        final Bitmap rotatedBitmap = rotateBitmap(resizedBitmap, 90);
+        final Bitmap resizedBitmap;
+        final Bitmap rotatedBitmap;
+        if (rotate){
+            resizedBitmap = scaleCenterCrop(selectedImage, 1280, 720);
+            rotatedBitmap = rotateBitmap(resizedBitmap, 90);
+        }
+        else {
+            resizedBitmap = scaleCenterCrop(selectedImage, 720, 1280);
+            rotatedBitmap = rotateBitmap(resizedBitmap, 180);
+        }
+
+
         width = rotatedBitmap.getWidth();
         height = rotatedBitmap.getHeight();
 
