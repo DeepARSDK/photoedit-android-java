@@ -257,13 +257,13 @@ public class MainActivity extends AppCompatActivity implements AREventListener  
 
     private void gotoPrevious() {
         if (activeFilterType == 0) {
-            currentMask = (currentMask - 1) % masks.size();
+            currentMask = (currentMask - 1 + masks.size()) % masks.size();
             deepAR.switchEffect("mask", getFilterPath(masks.get(currentMask)));
         } else if (activeFilterType == 1) {
-            currentEffect = (currentEffect - 1) % effects.size();
+            currentEffect = (currentEffect - 1 + effects.size()) % effects.size();
             deepAR.switchEffect("effect", getFilterPath(effects.get(currentEffect)));
         } else if (activeFilterType == 2) {
-            currentFilter = (currentFilter - 1) % filters.size();
+            currentFilter = (currentFilter - 1 + filters.size()) % filters.size();
             deepAR.switchEffect("filter", getFilterPath(filters.get(currentFilter)));
         }
         refreshImage();
