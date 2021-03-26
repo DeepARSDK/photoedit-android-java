@@ -23,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 import ai.deepar.ar.DeepAR;
+import ai.deepar.ar.DeepARImageFormat;
 
 public class LoadImageHandlerThread extends HandlerThread {
 
@@ -144,9 +145,9 @@ public class LoadImageHandlerThread extends HandlerThread {
         SystemClock.sleep(100);
         // Due to initial rotation of portrait image by 90 degrees, we need to tell DeepAR to rotate
         // the final output by another 270 degrees to output a portrait image
-        imageReceiver.receiveFrame(nv21bb, width, height, 270, false );
+        imageReceiver.receiveFrame(nv21bb, width, height, 270, false, DeepARImageFormat.YUV_NV21, 1);
         SystemClock.sleep(100);
-        imageReceiver.receiveFrame(nv21bb, width, height, 270, false );
+        imageReceiver.receiveFrame(nv21bb, width, height, 270, false, DeepARImageFormat.YUV_NV21, 1 );
 
     }
 
